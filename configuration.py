@@ -97,17 +97,20 @@ class JsonFileConfigurationBackend(ConfigurationBackend):
         self.compulsory = compulsory
         self.file_location = None
 
-    def _get_location(self, location):
-        if location == self.CODE_ROOT_DIR:
-            return ''
-        if location == self.WORKING_DIR:
+    def _get_location(self):
+        if self.location == self.CODE_ROOT_DIR:
+            module_name, file_name = self.instance.__name__, self.instance.__file__
+            module_path = module_name.replace('.', os.path.sep)
+            code_root_directory = file_name.rsplit(module_path, 1)[0]
+            return code_root_directory
+        if self.location == self.WORKING_DIR:
             return os.getcwd()
-        return location
+        return self.location
 
     def get_file_location(self):
         if self.file_location:
             return self.file_location
-        location = self._get_location(self.location)
+        location = self._get_location()
         self.file_location = os.path.join(location, self.file)
         return self.file_location
 
