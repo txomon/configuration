@@ -3,6 +3,7 @@ from __future__ import absolute_import, print_function, unicode_literals
 
 import _imp
 import importlib.machinery
+import json
 import os
 import sys
 import types
@@ -31,14 +32,15 @@ NoValue = object()
 
 
 class ConfigurationBackend:
-    is_dynamic = False
+    is_dynamic = True
+    """Marks if the backend can be modified externally (not from the configuration API). This affects caching."""
     is_writable = False
+    """Marks if the backend accepts modifications through the configuration API (depends on the instance)"""
 
-    def __init__(self, *args, write=False, dynamic=False, **kwargs):
-        self._args = args
-        self._kwargs = kwargs
+    def __init__(self, *args, write=False, dynamic=True, **kwargs):
         self.name = None
         self._value = NoValue
+        self.instance = None
 
         if self.is_writable:
             self.is_writable = write
@@ -49,6 +51,14 @@ class ConfigurationBackend:
             self.is_dynamic = dynamic
         elif dynamic:
             raise ValueError(f'{self.__class__.__name__} is not a dynamic backend')
+
+        self.initialize_backend(*args, **kwargs)
+
+    def initialize_backend(self, *args, **kwargs):
+        return
+
+    def set_instance(self, instance):
+        self.instance = instance
 
     def set_name(self, name):
         self.name = name
@@ -66,26 +76,50 @@ class ConfigurationBackend:
         self._value = value
 
     def get_real_value(self):
-        raise NotImplementedError()
+        raise NotImplementedError(f'{self.__class__.__name__} is not implemented correctly')
 
     def set_real_value(self, value):
         raise AttributeError(f'{self.__class__.__name__} for item {self.name} is not writable')
 
 
 class EnvironmentConfigurationBackend(ConfigurationBackend):
-    is_dynamic = True
-
     def get_real_value(self):
-        return os.environ.get(self.name.upper(), None)
+        return os.environ.get(self.name.upper(), NoValue)
 
 
 class JsonFileConfigurationBackend(ConfigurationBackend):
     CODE_ROOT_DIR = 1
     WORKING_DIR = 2
-    is_dynamic = True
+
+    def initialize_backend(self, file, location, compulsory=False):
+        self.file = file
+        self.location = location
+        self.compulsory = compulsory
+        self.file_location = None
+
+    def _get_location(self, location):
+        if location == self.CODE_ROOT_DIR:
+            return ''
+        if location == self.WORKING_DIR:
+            return os.getcwd()
+        return location
+
+    def get_file_location(self):
+        if self.file_location:
+            return self.file_location
+        location = self._get_location(self.location)
+        self.file_location = os.path.join(location, self.file)
+        return self.file_location
 
     def get_real_value(self):
-        raise NotImplementedError()
+        if not os.path.exists(self.get_file_location()):
+            if self.compulsory:
+                raise FileNotFoundError(
+                    f'File {self.file_location} is compulsory but cannot be found for {self.__class__.__name__}')
+            else:
+                return NoValue
+        with open(self.file_location) as fd:
+            return json.loads(fd.read()).get(self.name.lower(), NoValue)
 
 
 class ConfigurationItem:
@@ -115,6 +149,8 @@ class ConfigurationItem:
             return
         if not instance:
             raise ValueError('Argument instance was not passed while still not initialized')
+        for backend in self.backends:
+            backend.set_instance(instance)
         for var_name, value in vars(instance).items():
             if value == self:
                 self.__set_name__(None, var_name)
@@ -124,8 +160,18 @@ class ConfigurationItem:
 
     def __get__(self, instance, owner):
         self._init_schema(instance)
+        values = [backend.get_value() for backend in self.backends]
+        value = self.spec.get('default', NoValue)
+        for backend_value in values:
+            if backend_value is not NoValue:
+                value = backend_value
+        if value is NoValue:
+            raise ValueError(f'{self.name} is not defined in any backend, and has no default value')
+        return value
 
     def __set_name__(self, owner, name):
+        if self.name and self.name != name:
+            raise AttributeError(f'Trying to change the name of the ConfigurationItem from {self.name} to {name}')
         self.name = name
         for backend in self.backends:
             backend.set_name(name=name)
