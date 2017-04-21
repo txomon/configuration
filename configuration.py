@@ -1,5 +1,14 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, print_function, unicode_literals
+"""Magical configuration loader/saver
+
+.. moduleauthor:: Javier Domingo Cansino <javierdo1@gmail.com>
+   :platform: Unix, Windows
+   :synopsis: Magical configuration loaders/saver
+
+Loading configuration is always horrible. The aim of this library is to follow after Netflix's Archaius to provide
+configuration to your applications. It makes use of a little black magic to inject itself, but overall is a good boy.
+"""
 
 import _imp
 import importlib.machinery
@@ -10,11 +19,16 @@ import types
 
 
 class Validator:
+    """Validating class, it's an optional dependency, so it's a placeholder
+    """
     def __init__(self, *a, **kw):
         pass
 
 
 class Configuration(types.ModuleType):
+    """Configuration ModuleType. It makes sure to inject the descriptors
+    
+    """
     def __getattribute__(self, item):
         instance_value = object.__getattribute__(self, item)
         if hasattr(instance_value, '__get__'):
@@ -190,6 +204,7 @@ class ConfigurationItem:
         self.__set__(None, value)
 
 
+# This is extracted from the logic at importlib._bootstrap_external.py::_get_supported_file_loaders
 class ConfigurationExtensionFileLoader(importlib.machinery.ExtensionFileLoader):
     def create_module(self, spec):
         if not spec.name.endswith('configuration'):
