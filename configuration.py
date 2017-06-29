@@ -119,6 +119,7 @@ class JsonFileConfigurationBackend(ConfigurationBackend):
             return code_root_directory
         if self.location == self.WORKING_DIR:
             return os.getcwd()
+
         return self.location
 
     def get_file_location(self):
@@ -138,6 +139,52 @@ class JsonFileConfigurationBackend(ConfigurationBackend):
         with open(self.file_location) as fd:
             return json.loads(fd.read()).get(self.name.lower(), NoValue)
 
+import sqlite3
+
+class SQLiteConfigurationBackend(ConfigurationBackend):
+    CODE_ROOT_DIR = 1
+    WORKING_DIR = 2
+
+    def initialize_backend(self, file, location, table, compulsory=False):
+        self.file = file
+        self.table = table
+        self.location = location
+        self.compulsory = compulsory
+        self.file_location = None
+
+    def _get_location(self):
+        if self.location == self.CODE_ROOT_DIR:
+            module_name, file_name = self.instance.__name__, self.instance.__file__
+            module_path = module_name.replace('.', os.path.sep)
+            code_root_directory = file_name.rsplit(module_path, 1)[0]
+            return code_root_directory
+        if self.location == self.WORKING_DIR:
+            return os.getcwd()
+        return self.location
+
+    def get_file_location(self):
+        if self.file_location:
+            return self.file_location
+        location = self._get_location()
+        self.file_location = os.path.join(location, self.file)
+        return self.file_location
+
+    def get_real_value(self):
+        if not os.path.exists(self.get_file_location()):
+            if self.compulsory:
+                raise FileNotFoundError(
+                    f'File {self.file_location} is compulsory but cannot be found for {self.__class__.__name__}')
+            else:
+                return NoValue
+        conn = sqlite3.connect(self.file_location)
+        c = conn.cursor()
+        c.execute(f'SELECT value FROM {self.table} WHERE key="{self.name.lower()}"')
+        result = c.fetchone()
+        if result is not None:
+            value = result[0]
+            conn.close()
+            return value
+        return NoValue
 
 class ConfigurationItem:
     def __init__(self, *spec, backends=None, **schema):
