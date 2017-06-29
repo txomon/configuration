@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, print_function, unicode_literals
 
-import app.configuration
-from app.configuration import TOKEN
+from app import configuration
 
 
 # Default de 5
 def main():
+
     global TOKEN
     print(app.configuration.TOKEN)  # 5
     print(TOKEN)  # 5
