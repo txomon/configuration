@@ -141,12 +141,6 @@ class JsonFileConfigurationBackend(ConfigurationBackend):
 
 class ConfigurationItem:
     def __init__(self, *spec, backends=None, **schema):
-        if not backends:
-            backends = [
-                EnvironmentConfigurationBackend(),
-                JsonFileConfigurationBackend(file='config.json', location=JsonFileConfigurationBackend.CODE_ROOT_DIR),
-                JsonFileConfigurationBackend(file='config.json', location=JsonFileConfigurationBackend.WORKING_DIR),
-            ]
         self.backends = backends
         self.name = None
         self.validator = None
@@ -162,10 +156,13 @@ class ConfigurationItem:
             assert any([spec, schema])
 
     def _init_schema(self, instance=None):
-        if self.name and self.validator:
+        if self.name and self.validator and self.backends:
             return
         if not instance:
             raise ValueError('Argument instance was not passed while still not initialized')
+        if not self.backends:
+            assert hasattr(instance, 'BACKENDS'), 'No default configuration.BACKENDS and no explicit backends set'
+            self.backends = instance.BACKENDS
         for backend in self.backends:
             backend.set_instance(instance)
         for var_name, value in vars(instance).items():
