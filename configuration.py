@@ -205,21 +205,21 @@ class ConfigurationItem:
 class ConfigurationExtensionFileLoader(importlib.machinery.ExtensionFileLoader):
     def create_module(self, spec):
         if not spec.name.endswith('configuration'):
-            return None
+            return super().create_module(spec=spec)
         return type(spec.name, (Configuration,), {})(spec.name)
 
 
 class ConfigurationSourceFileLoader(importlib.machinery.SourceFileLoader):
     def create_module(self, spec):
         if not spec.name.endswith('configuration'):
-            return None
+            return super().create_module(spec=spec)
         return type(spec.name, (Configuration,), {})(spec.name)
 
 
 class ConfigurationSourcelessFileLoader(importlib.machinery.SourcelessFileLoader):
     def create_module(self, spec):
         if not spec.name.endswith('configuration'):
-            return None
+            return super().create_module(spec=spec)
         return type(spec.name, (Configuration,), {})(spec.name)
 
 
