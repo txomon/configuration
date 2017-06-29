@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, print_function, unicode_literals
+
 """Magical configuration loader/saver
 
 .. moduleauthor:: Javier Domingo Cansino <javierdo1@gmail.com>
@@ -21,6 +22,7 @@ import types
 class Validator:
     """Validating class, it's an optional dependency, so it's a placeholder
     """
+
     def __init__(self, *a, **kw):
         pass
 
@@ -29,6 +31,7 @@ class Configuration(types.ModuleType):
     """Configuration ModuleType. It makes sure to inject the descriptors
     
     """
+
     def __getattribute__(self, item):
         instance_value = object.__getattribute__(self, item)
         if hasattr(instance_value, '__get__'):
@@ -105,11 +108,12 @@ class JsonFileConfigurationBackend(ConfigurationBackend):
     CODE_ROOT_DIR = 1
     WORKING_DIR = 2
 
-    def initialize_backend(self, file, location, compulsory=False):
+    def initialize_backend(self, file, location, compulsory=False, uncapitalize=True):
         self.file = file
         self.location = location
         self.compulsory = compulsory
         self.file_location = None
+        self.uncapitalize = True
 
     def _get_location(self):
         if self.location == self.CODE_ROOT_DIR:
@@ -136,7 +140,11 @@ class JsonFileConfigurationBackend(ConfigurationBackend):
             else:
                 return NoValue
         with open(self.file_location) as fd:
-            return json.loads(fd.read()).get(self.name.lower(), NoValue)
+            all_config = json.load(fd)
+            if self.uncapitalize:
+                return all_config.get(self.name.lower(), NoValue)
+            else:
+                return all_config.get(self.name, NoValue)
 
 
 class ConfigurationItem:
