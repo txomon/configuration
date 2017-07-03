@@ -55,7 +55,6 @@ class ConfigurationBackend:
     """Marks if the backend accepts modifications through the configuration API (depends on the instance)"""
 
     def __init__(self, *args, write=False, dynamic=True, **kwargs):
-        self.name = None
         self._value = NoValue
         self.instance = None
 
@@ -77,31 +76,28 @@ class ConfigurationBackend:
     def set_instance(self, instance):
         self.instance = instance
 
-    def set_name(self, name):
-        self.name = name
-
-    def get_value(self):
+    def get_value(self, name):
         if not self.is_dynamic and self._value:
             return self._value
-        self._value = value = self.get_real_value()
+        self._value = value = self.get_real_value(name)
         return value
 
-    def set_value(self, value):
+    def set_value(self, name, value):
         if not self.is_writable:
-            raise AttributeError(f'{self.__class__.__name__} for item {self.name} is not writable')
-        self.set_real_value(value)
+            raise AttributeError(f'{self.__class__.__name__} for item {name} is not writable')
+        self.set_real_value(name, value)
         self._value = value
 
-    def get_real_value(self):
+    def get_real_value(self, name):
         raise NotImplementedError(f'{self.__class__.__name__} is not implemented correctly')
 
-    def set_real_value(self, value):
-        raise AttributeError(f'{self.__class__.__name__} for item {self.name} is not writable')
+    def set_real_value(self, name, value):
+        raise AttributeError(f'{self.__class__.__name__} for item {name} is not writable')
 
 
 class EnvironmentConfigurationBackend(ConfigurationBackend):
-    def get_real_value(self):
-        return os.environ.get(self.name.upper(), NoValue)
+    def get_real_value(self, name):
+        return os.environ.get(name.upper(), NoValue)
 
 
 class JsonFileConfigurationBackend(ConfigurationBackend):
@@ -132,7 +128,7 @@ class JsonFileConfigurationBackend(ConfigurationBackend):
         self.file_location = os.path.join(location, self.file)
         return self.file_location
 
-    def get_real_value(self):
+    def get_real_value(self, name):
         if not os.path.exists(self.get_file_location()):
             if self.compulsory:
                 raise FileNotFoundError(
@@ -142,9 +138,15 @@ class JsonFileConfigurationBackend(ConfigurationBackend):
         with open(self.file_location) as fd:
             all_config = json.load(fd)
             if self.uncapitalize:
-                return all_config.get(self.name.lower(), NoValue)
+                return all_config.get(name.lower(), NoValue)
             else:
-                return all_config.get(self.name, NoValue)
+                return all_config.get(name, NoValue)
+
+
+class DynamoDBConfigurationBackend(ConfigurationBackend):
+    def initialize_backend(self, table, key):
+        self.table = table
+        self.key = key
 
 
 class ConfigurationItem:
@@ -182,28 +184,27 @@ class ConfigurationItem:
 
     def __get__(self, instance, owner):
         self._init_schema(instance)
-        values = [backend.get_value() for backend in self.backends]
-        value = self.spec.get('default', NoValue)
-        for backend_value in values:
-            if backend_value is not NoValue:
-                value = backend_value
-        if value is NoValue:
-            raise ValueError(f'{self.name} is not defined in any backend, and has no default value')
+        for backend in reversed(self.backends):
+            value = backend.get_value(self.name)
+            if value is not NoValue:
+                break
+        else:
+            value = self.spec.get('default', NoValue)
+            if value is NoValue:
+                raise ValueError(f'{self.name} is not defined in any backend, and has no default value')
         return value
 
     def __set_name__(self, owner, name):
         if self.name and self.name != name:
             raise AttributeError(f'Trying to change the name of the ConfigurationItem from {self.name} to {name}')
         self.name = name
-        for backend in self.backends:
-            backend.set_name(name=name)
 
     def __set__(self, instance, value):
         writable_backends = [backend for backend in self.backends if backend.is_writable]
         if not writable_backends:
             raise AttributeError(f"ConfigurationItem {self.name} doesn't have any writable backend")
         for backend in writable_backends:
-            backend.set_value(value)
+            backend.set_value(self.name, value)
 
     def set(self, value):
         self.__set__(None, value)
