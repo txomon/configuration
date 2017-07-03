@@ -192,6 +192,8 @@ class ConfigurationItem:
             value = self.spec.get('default', NoValue)
             if value is NoValue:
                 raise ValueError(f'{self.name} is not defined in any backend, and has no default value')
+        if 'coerce' in self.spec:
+            value = self.spec['coerce'](value)
         return value
 
     def __set_name__(self, owner, name):
